@@ -1,0 +1,180 @@
+initialize()
+{
+	if(exists("slimgui"))
+	{
+		defineConstant("mu",5e-4);
+		defineConstant("r",1e-02);
+		defineConstant("selfp1",0);
+		defineConstant("selfp2",10);
+		defineConstant("selfph",10);
+		defineConstant("tBurn",40002);
+		defineConstant("it",1);
+	}
+	
+	defineConstant("Nloc",100);
+	defineConstant("Npop",500);
+	defineConstant("tGen",tBurn + 20001);
+
+	suffix = ".csv";
+//	defineConstant("nameFileSubst","C:/Users/Fred/Dropbox/HybridMutationLoad/SLiM/Results_SLiM/mu" + mu + " r" + r +"/fixedSubst_mu" + mu + "_r" + r + "_" + it + suffix);
+//	defineConstant("nameFileNMut","C:/Users/Fred/Dropbox/HybridMutationLoad/SLiM/Results_SLiM/mu" + mu + " r" + r +"/NumbMut_mu" + mu + "_r" + r + "_" + it + suffix);
+//	defineConstant("nameFileDom","C:/Users/Fred/Dropbox/HybridMutationLoad/SLiM/Results_SLiM/mu" + mu + " r" + r +"/Dom_mu" + mu + "_r"  + r + "_" + it + suffix);
+//	defineConstant("nameFileSelecCoeff","C:/Users/Fred/Dropbox/HybridMutationLoad/SLiM/Results_SLiM/mu" + mu + " r" + r +"/selectCoeff_mu" + mu + "_r" + r + "_" + it + suffix);
+
+	defineConstant("nameFile","C:/Users/Fred/Dropbox/HybridMutationLoad/SLiM/Results_SLiM/Hybridization/mu" + format("%.1e",mu) + " r" + format("%.1e",r) +"/introgression_self1" + selfp1 + "_self2" + selfp2 + "_selfh" + selfph + "_tBurn" + tBurn + "_mu" + format("%.1e",mu) + "_r" + format("%.1e",r) + "_" + it + suffix);
+	defineConstant("nameFileFitness","C:/Users/Fred/Dropbox/HybridMutationLoad/SLiM/Results_SLiM/Hybridization/mu" + format("%.1e",mu) + " r" + format("%.1e",r) +"/fitness_introgression_self1" + selfp1 + "_self2" + selfp2 + "_selfh" + selfph + "_tBurn" + tBurn + "_mu" + format("%.1e",mu) + "_r" + format("%.1e",r) + "_" + it + suffix);
+	initializeMutationRate(mu);
+	initializeMutationType("m1", 0.5, "e", -0.1);
+	initializeMutationType("m2",0.0,"f",0.0);
+	m2.convertToSubstitution=F;
+	initializeMutationType("m3",0.0,"f",0.0);
+	m3.convertToSubstitution=F;
+	initializeGenomicElementType("g1", m1, 1.0);
+	for (i in 1:100)
+		initializeGenomicElement(g1, i - 1, i - 1);
+	initializeRecombinationRate(r);
+}
+
+1
+{
+	//sim.rescheduleScriptBlock(s1,start=2, end=tBurn);
+	sim.rescheduleScriptBlock(s2,start=tBurn,end=tBurn);
+	sim.rescheduleScriptBlock(s3,start=tBurn+1,end=tGen);
+	sim.rescheduleScriptBlock(s4,start=tGen,end=tGen);
+	sim.rescheduleScriptBlock(s5,start=tBurn-1,end=tBurn-1);
+	sim.rescheduleScriptBlock(s6,start=tBurn+1,end=tBurn+1);
+	sim.rescheduleScriptBlock(s7,start=tBurn+1,end=tBurn+1);
+	
+	sim.addSubpop("p1", Npop);
+	sim.addSubpop("p2", Npop);
+	p1.setSelfingRate(selfp1/10);
+	p2.setSelfingRate(selfp2/10);
+	p1.setMigrationRates(p2, 0.0);
+	p2.setMigrationRates(p1, 0.0);
+	p1.individuals.setValue("pop",1);
+	p2.individuals.setValue("pop",2);
+}
+
+mutation(m1)
+{
+	Selec = mut.selectionCoeff;
+	Dom = exp(7 * Selec) / 2;
+	mut.setValue("dom", Dom);
+	return T;
+}
+
+fitness(m1)
+{
+	if (homozygous)
+		return 1.0 + mut.selectionCoeff;
+	else
+		return 1.0 + mut.getValue("dom") * mut.selectionCoeff;
+}
+
+s5 150001 late()
+{
+	for (i in 0:99)
+	{
+		p1.genomes.addNewDrawnMutation(m2,i);
+		p2.genomes.addNewDrawnMutation(m3,i);
+	}	
+}
+
+s2 150002 early()
+{
+	sim.addSubpop("p3", 500);
+	p3.setMigrationRates(c(p1,p2), c(0.5,0.5));
+	p3.setSelfingRate(selfph/10);
+}
+
+s7 150003: mateChoice(p3)
+{
+	t = sim.generation;
+	Par1 = individual;
+	if(sum(Par1.genomes.countOfMutationsOfType(m2)) == 0)
+	{
+		par1Origin = 2;
+	}
+	else
+	{
+		par1Origin = 1;
+	}
+	
+	do
+	{
+		mate = sample(p3.individuals, 1, T, weights);
+		if(sum(mate.genomes.countOfMutationsOfType(m2)) == 0)
+		{
+			mateOrigin = 2;
+		}
+		else
+		{
+			mateOrigin = 1;
+		}
+	} while(mateOrigin == par1Origin);
+
+	return mate;
+}
+
+s6 150003 early()
+{
+	p1.setSubpopulationSize(0);
+	p2.setSubpopulationSize(0);
+	sim.chromosome.setMutationRate(0.0);
+	//sim.chromosome.setRecombinationRate(0.0);
+}
+
+s3 150003:200003
+{
+	t = sim.generation;
+
+	if(t%1000 == 0) catn("Iteration " + it + ": t = " + t);
+
+	if(t%100 == 3)
+	{
+		countP1 = sum(p3.genomes.countOfMutationsOfType(m2));
+		countP2 = sum(p3.genomes.countOfMutationsOfType(m3));
+		partP1 = countP1/(countP1+countP2);
+		partP2 = countP2/(countP1+countP2);
+		lineFile = t + "," + partP1 + "," + partP2;
+		//catn(lineFile);
+		if(t == tBurn+1)
+		{
+			if (!writeFile(nameFile, lineFile, append=F))
+			{
+				stop("Error when writing the file.");
+			}
+		}
+		else
+		{
+			if (!writeFile(nameFile, lineFile, append=T))
+			{
+				stop("Error when writing the file.");
+			}
+		}
+		
+		//To follow population mean fitness
+		fit = mean(p3.cachedFitness(NULL));
+		lineFit = t + " , " + fit;
+		if(t == 3)
+		{
+			if (!writeFile(nameFileFitness, lineFit, append=F))
+			{
+				stop("Error when writing the file.");
+			}
+		}
+		else
+		{
+			if (!writeFile(nameFileFitness, lineFit, append=T))
+			{
+				stop("Error when writing the file.");
+			}
+		}
+	}
+}
+
+s4 200003 late()
+{
+	catn("The simulation has now ended");
+	sim.simulationFinished();
+}
